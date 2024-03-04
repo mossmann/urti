@@ -281,6 +281,13 @@ class URTIBasicTestGateware(Elaboratable):
         # Connect our device by default.
         m.d.comb += usb.connect.eq(1)
 
+        m.d.comb += [
+            afe_data.dac_data_i.eq(0x220),
+            afe_data.dac_data_q.eq(0x220),
+        ]
+
+        m.d.comb += max2831_intf.rxtx.o.eq(1)
+
         return m
 
 
@@ -387,7 +394,7 @@ if __name__ == "__main__":
     top_level_cli(URTIBasicTestGateware)
 
     # Wait for the USB device to be enumerated.
-    time.sleep(2)
+    time.sleep(5)
 
     # Create a connection to URTI and print a list of methods.
     urti = URTIBasicTestGatewareConnection()

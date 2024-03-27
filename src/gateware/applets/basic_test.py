@@ -282,8 +282,8 @@ class URTIBasicTestGateware(Elaboratable):
         m.d.comb += usb.connect.eq(1)
 
         m.d.comb += [
-            afe_data.dac_data_i.eq(0x220),
-            afe_data.dac_data_q.eq(0x220),
+            afe_data.dac_data_i.eq(0x280),
+            afe_data.dac_data_q.eq(0x280),
         ]
 
         m.d.comb += max2831_intf.rxtx.o.eq(1)

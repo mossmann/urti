@@ -43,7 +43,7 @@ class RFFC5072RegisterInterface(Component):
         shift_reg  = Signal(8+16)
         bits_write = Signal(range(16+8+1))
         bits_read  = Signal(range(16+1+1))  # +1 cycle to account for read delay
-        nop_cycles = Signal(1)
+        idle_cycles = Signal(2)
 
         clock_period = Signal(range(cycles))
         m.d.comb += pads.sclk.o.eq(clock_period[-1])
@@ -53,7 +53,6 @@ class RFFC5072RegisterInterface(Component):
         m.d.sync += self.bus.ack.eq(0)
 
         with m.FSM() as fsm:
-            m.d.comb += pads.enx.o.eq(~fsm.ongoing("IDLE"))
 
             with m.State('IDLE'):
                 m.d.sync += [
@@ -73,24 +72,20 @@ class RFFC5072RegisterInterface(Component):
                             bits_write  .eq(8),
                             bits_read   .eq(16+1),
                         ]
-                    # The device requires two clock cycles while ENX is not asserted 
-                    # before a serial transaction. This is not clearly documented.
-                    m.d.sync += nop_cycles.eq(1)
+                    m.d.sync += idle_cycles.eq(1)
                     m.next = "PREAMBLE"
 
             with m.State("PREAMBLE"):
                 m.d.sync += clock_period.eq(clock_period + 1)
                 with m.If(falling_edge):
-                    with m.If(nop_cycles == 0):
+                    with m.If(idle_cycles == 0):
                         m.next = "WRITE_PHASE"
                     with m.Else():
-                        m.d.sync += nop_cycles.eq(nop_cycles - 1)
+                        m.d.sync += idle_cycles.eq(idle_cycles - 1)
 
             with m.State("WRITE_PHASE"):
-                m.d.comb += [
-                    pads.enx.o.eq(1),
-                    pads.sdata.oe.eq(1),
-                ]
+                m.d.comb += pads.enx.o.eq(1)
+                m.d.comb += pads.sdata.oe.eq(1)
                 m.d.sync += clock_period.eq(clock_period + 1)
                 with m.If(falling_edge):
                     with m.If(bits_write == 0):
@@ -107,14 +102,13 @@ class RFFC5072RegisterInterface(Component):
                         ]
                         
             with m.State("READ_PHASE"):
+                m.d.comb += pads.enx.o.eq(1)
                 m.d.sync += clock_period.eq(clock_period + 1)
                 with m.If(falling_edge):
                     with m.If(bits_read == 0):
                         m.d.sync += self.bus.dat_r.eq(shift_reg[:16])
                         m.d.sync += self.bus.ack.eq(1)
-                        # The device requires a clock cycle while ENX is not asserted 
-                        # after a serial transaction. This is not clearly documented.
-                        m.d.sync += nop_cycles.eq(0)
+                        m.d.sync += idle_cycles.eq(0)
                         m.next = "POSTAMBLE"
                     with m.Else():
                         m.d.sync += [
@@ -125,10 +119,11 @@ class RFFC5072RegisterInterface(Component):
             with m.State("POSTAMBLE"):
                 m.d.sync += clock_period.eq(clock_period + 1)
                 with m.If(falling_edge):
-                    with m.If(nop_cycles == 0):
+                    with m.If(idle_cycles == 0):
                         m.next = "IDLE"
                     with m.Else():
-                        m.d.sync += nop_cycles.eq(nop_cycles - 1)
+                        m.d.sync += idle_cycles.eq(idle_cycles - 1)
+
 
         return m
 
@@ -165,7 +160,7 @@ class TestRFFC5072RegisterInterface(LunaGatewareTestCase):
         yield self.dut.bus.adr.eq(0x19)
 
         # Bus should be enabled soon
-        yield from self.wait_until(self.dut.pads.enx.o, timeout=2*self.dut.divisor)
+        yield from self.wait_until(self.dut.pads.enx.o, timeout=10*self.dut.divisor)
 
         # Wait for the transaction to complete, clear the request lines
         # and ensure the ACK signal only lasts one cycle
@@ -200,7 +195,7 @@ class TestRFFC5072RegisterInterface(LunaGatewareTestCase):
         yield self.dut.bus.dat_w.eq(0xF50F)
 
         # Bus should be enabled soon
-        yield from self.wait_until(self.dut.pads.enx.o, timeout=2*self.dut.divisor)
+        yield from self.wait_until(self.dut.pads.enx.o, timeout=10*self.dut.divisor)
 
         # Wait for the transaction to complete, clear the request lines
         # and ensure the ACK signal only lasts one cycle
